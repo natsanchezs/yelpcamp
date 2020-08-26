@@ -16,10 +16,10 @@ var express    = require("express"),
 var commentRoutes     = require("./routes/comments"),
 	campgroundsRoutes = require("./routes/campgrounds"),
 	indexRoutes       = require("./routes/index")
-
+	
 // seedDB();
 
-mongoose.connect(process.env.DATABASEURL, {useNewUrlParser: true, useUnifiedTopology: true, useFindAndModify: false});
+mongoose.connect(process.env.DATABASEURL, {useNewUrlParser: true, useUnifiedTopology: true, useFindAndModify: false, useCreateIndex: true});
 
 app.use(bodyParser.urlencoded({extended: true}));
 app.set("view engine", "ejs");
@@ -41,8 +41,16 @@ passport.deserializeUser(User.deserializeUser());
 
 app.locals.moment = require("moment");
 
-app.use(function(req, res, next){
+app.use(async function(req, res, next){
 	res.locals.currentUser = req.user;
+	if(req.user) {
+		try {
+			let user = await User.findById(req.user._id).populate("notifications", null, { isRead: false}).exec();
+			res.locals.notifications = user.notifications.reverse();
+		} catch(err) {
+			console.log(err.message);
+		}
+	}
 	res.locals.error = req.flash("error");
 	res.locals.success = req.flash("success");
 	next();
