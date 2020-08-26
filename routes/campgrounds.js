@@ -1,7 +1,11 @@
 var express = require("express");
 var router  = express.Router();
+var passport = require("passport");
 var Campground = require("../models/campground");
+var User = require("../models/user");
+var Notification = require("../models/notification");
 var middleware = require("../middleware");
+var async = require("async");
 var multer = require("multer");
 var storage = multer.diskStorage({
   filename: function(req, file, callback) {
@@ -16,8 +20,6 @@ var imageFilter = function (req, file, cb) {
     cb(null, true);
 };
 var upload = multer({ storage: storage, fileFilter: imageFilter})
-
-
 
 var cloudinary = require("cloudinary");
 cloudinary.config({ 
@@ -56,12 +58,12 @@ router.get("/", function(req, res){
 		
 //CREATE - add new campground to DB
 router.post("/", middleware.isLoggedIn, upload.single("image"), function(req, res) {
-    cloudinary.v2.uploader.upload(req.file.path, function(err, result) {
+    cloudinary.v2.uploader.upload(req.file.path, async function(err, result) {
       if(err) {
         req.flash("error", err.message);
         return res.redirect("back");
       }
-      // add cloudinary url for the image to the campground object under image property
+	 // add cloudinary url for the image to the campground object under image property
       req.body.campground.image = result.secure_url;
       // add image's public_id to campground object
       req.body.campground.imageId = result.public_id;
@@ -70,15 +72,44 @@ router.post("/", middleware.isLoggedIn, upload.single("image"), function(req, re
         id: req.user._id,
         username: req.user.username
       }
-      Campground.create(req.body.campground, function(err, campground) {
-        if (err) {
-          req.flash("error", err.message);
-          return res.redirect("back");
-        }
-        res.redirect("/campgrounds/" + campground.id);
-      });
-    });
+      // Campground.create(req.body.campground, function(err, campground)
+      // add cloudinary url for the image to the campground object under image property
+		// var image =  req.body.campground.image = result.secure_url;
+		// // add image's public_id to campground object
+		// var imageId = req.body.campground.imageId = result.public_id;
+		// // add author to campground
+		// var author= req.body.campground.author = {
+		// id: req.user._id,
+		// username: req.user.username
+		// };
+		// var desc = req.body.campground.description;
+	  
+		// var newCampground= {image: image, imageId: imageId, description: desc, author: author}
+		// // Campground.create(req.body.campground)
+		
+		try {
+			let campground = await Campground.create(req.body.campground);
+			let user = await User.findById(req.user._id).populate("followers").exec();
+			let newNotificacion = {
+				username: req.user.username,
+				campgroundId: campground.id
+			}
+			for(const follower of user.followers) {
+				let notification = await Notification.create(newNotificacion);
+				follower.notifications.push(notification);
+				follower.save();
+			}
+			//redirect back to campgrounds page
+			res.redirect("/campgrounds/" + campground.id);
+		} catch(err) {
+			req.flash("error", err.message);
+			res.redirect("back");
+		}
+	});
+		  
 });
+
+
 
 //NEW ROUTE - show form to create new campground
 router.get("/new", middleware.isLoggedIn, function(req, res){
@@ -159,5 +190,6 @@ router.delete("/:id", middleware.checkCampgroundOwnership, function(req, res){
 	function escapeRegex(text) {
     return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 };
+
 
 module.exports = router;
